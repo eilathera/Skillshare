@@ -94,7 +94,6 @@ function deleteEvent(e){
       var idNumCol = e.range.getColumn()-1;
       var idNumRow = e.range.getRow();
       var idNum = e.source.getActiveSheet().getRange(idNumRow, idNumCol).getValue();
-      //Replace YOURCALENDARID
       var event = CalendarApp.getCalendarById('YOURCALENDARID').getEventById(idNum);
       
       //Deletes the event based on the ID number
@@ -126,27 +125,32 @@ function newEvent(e){
         //Check if end time is valid
         if(validEnd == true){
           //Check if start time < end time
-          if(SpreadsheetApp.getActiveSheet().getRange('F4').getValue() == true){
-            //Convert the start & end dates into date objects to create the event
-            var sheetUI = SpreadsheetApp.getActive().getSheetByName('Interface');
-            var sheetCal = SpreadsheetApp.getActive().getSheetByName('Calendar');
-            var startDate = new Date(sheetUI.getRange('G3').getValue());
-            var endDate = new Date(sheetUI.getRange('H3').getValue())
-            
-            //Create the calendar event
-            var event = CalendarApp.getDefaultCalendar().createEvent('Skillshare General Meeting',
-                                                                     startDate, endDate,
-                                                                     {location: sheetUI.getRange('B3').getValue(),
-                                                                      description: sheetUI.getRange('C3').getValue()
-                                                                     }
-                                                                    )
-            
-            //Delete the calendar event details from the "Interface" sheet
-            sheetUI.getRange('A3:E3').clearContent();
-            sheetUI.getRange('F3').setValue(false);
-            
-            //Update the "Calendar" list with the new event
-            updateEventList();
+          if(validStart == false){
+            if(SpreadsheetApp.getActiveSheet().getRange('F4').getValue() == true){
+              //Convert the start & end dates into date objects to create the event
+              var sheetUI = SpreadsheetApp.getActive().getSheetByName('Interface');
+              var sheetCal = SpreadsheetApp.getActive().getSheetByName('Calendar');
+              var startDate = new Date(sheetUI.getRange('G3').getValue());
+              var endDate = new Date(sheetUI.getRange('H3').getValue())
+              
+              //Create the calendar event
+              var event = CalendarApp.getDefaultCalendar().createEvent('Skillshare General Meeting',
+                                                                       startDate, endDate,
+                                                                       {location: sheetUI.getRange('B3').getValue(),
+                                                                        description: sheetUI.getRange('C3').getValue()
+                                                                       }
+                                                                      )
+              
+              //Delete the calendar event details from the "Interface" sheet
+              sheetUI.getRange('A3:E3').clearContent();
+              sheetUI.getRange('F3').setValue(false);
+              
+              //Update the "Calendar" list with the new event
+              updateEventList();
+            }
+            else{
+              showAlert(6);
+            }
           }
           //If start time is >= end time, notify user and clear "Create" checkbox
           else{
@@ -195,6 +199,9 @@ function showAlert(x) {
       break;
     case 5:
       var result = ui.alert('Start time must be before the end time.');
+      break;
+    case 6:
+      var result = ui.alert('Start time must be before current time/date.'); 
       break;
   }
   
