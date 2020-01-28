@@ -1,0 +1,203 @@
+/*
+This class handles all of the calendar management functions:
+
+To update the event list: updateEventList()
+To delete events in the event list: deleteEvent()
+To create new events: newEvent()
+
+Note that deleteEvent() and newEvent() are added as installable triggers from onEdit() events which is why they have 'e' parameters (for the event object).
+
+This code is attached to a Spreadsheet with two named sheets: Interface & Calendar
+
+The Interface Sheet
+- A2:F2 are the column headers titled: date, location, description, start time, end time, and create.
+- A3:F3 are the data entry cells with F3 being a checkbox.
+The following are equations done in the sheet for the purpose of speed. It was easier for me to just perform the equation in the sheet than in the script.
+- G3 has the equation "=A3+D3" to combine the entered date and start time to form a complete date object
+- H3 has the equation "=A3+E3" to combine the entered date and end time to form a complete date object
+- I3 has the equation "=COUNTBLANK(A3:E3)" to count the number of empty cells from A3:E3
+- A4 has the equation "=ISDATE(A3)" checks if entered date is a valid date
+- D4 has the equation "=ISDATE(D3)" checks if entered start time is a valid time
+- E4 has the equation "=ISDATE(E3)" checks if entered end time is a valid time
+- F4 has the equation "=if(G3<H3,true,false)" checks if start time is less than end time
+
+The Calendar Sheet
+- A1:F1 are the column headers titled: start date, end date, location, description, id#, and delete
+- A1:F1 are populated from the calendar created-- not from user entry to preserve the accuracy of the data. This is updated using updateEventList()
+
+Added to the manifest file:
+"oauthScopes": ["https://www.googleapis.com/auth/calendar", 
+"https://www.google.com/calendar/feeds", 
+"https://www.googleapis.com/auth/spreadsheets", 
+"https://www.googleapis.com/auth/script.external_request"]
+
+By: Rachel Pang
+01/24/2020
+*/
+
+//When the document is opened, create the UI element to display alerts
+function onOpen(){
+  SpreadsheetApp.getUi()
+  .createMenu('Custom Menu')
+  .addItem('Show alert', 'showAlert')
+  .addToUi();
+}
+
+//Updates the event list on the "Calendar" tab. This function is called when adding and deleting events to ensure the most up-to-date list.
+function updateEventList(){
+  //Uses the default calendar which is called "Apex Skillshare"
+  var cal = CalendarApp.getDefaultCalendar();
+  //This is the start (Date() = today's date) and end dates that the list will display.
+  var events = cal.getEvents(new Date(), new Date("1/1/2100 12:00 AM"));
+  var ss = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Calendar');
+  
+  //Clears all the events from the list to ensure there are no duplicate items.
+  ss.getRange('A2:F').clear();
+  
+  //For every event in 'events', this loop will populate the approprivate cells with the event information
+  for(var i = 0;i<events.length;i++){
+    //This section gets the information
+    var title = events[i].getTitle();
+    var st = events[i].getStartTime();
+    var et = events[i].getEndTime();
+    var loc = events[i].getLocation();
+    var des = events[i].getDescription();
+    var id = events[i].getId();
+    
+    //This section sets the values in the cells
+    ss.getRange(i+2, 1).setValue(st);
+    ss.getRange(i+2, 2).setValue(et);
+    ss.getRange(i+2, 3).setValue(loc);
+    ss.getRange(i+2, 4).setValue(des);
+    ss.getRange(i+2, 5).setValue(id);
+    
+    //This section creates the checkboxes in column F because Google hates checkboxes and doesn't have an easy way to create them
+    var enforceCheckbox = SpreadsheetApp.newDataValidation();
+    enforceCheckbox.requireCheckbox();
+    enforceCheckbox.setAllowInvalid(false);
+    enforceCheckbox.build();
+    //This sets the checkbox in the cell
+    ss.getRange(i+2,6).setDataValidation(enforceCheckbox)
+  }
+}
+
+//This function is used for deleting events in the "Calendar" tab and the coresponding event in the calendar. 'e' is the onEdit event so we know what sheet/cell/etc. that the user is interacting with
+function deleteEvent(e){
+  //Check to see if the user is in the "Calendar" tab and clicking on a checkbox.
+  if(e.source.getActiveSheet().getName() == 'Calendar' && e.range.getValue() == true){
+    //Display dialogue box asking if user is sure they want to delete that event
+    var ui = SpreadsheetApp.getUi();
+    var response = ui.alert('Delete', 'Are you sure you want to delete this event?', ui.ButtonSet.YES_NO);
+    
+    //If the user clicks 'yes', it find the event ID number next to the delete checkbox
+    if (response == ui.Button.YES) {
+      var idNumCol = e.range.getColumn()-1;
+      var idNumRow = e.range.getRow();
+      var idNum = e.source.getActiveSheet().getRange(idNumRow, idNumCol).getValue();
+      //Replace YOURCALENDARID
+      var event = CalendarApp.getCalendarById('YOURCALENDARID').getEventById(idNum);
+      
+      //Deletes the event based on the ID number
+      event.deleteEvent();
+      //Updates the Calendar tab
+      updateEventList();
+    } else{
+      //If the user clicks 'no' or exits out of the prompt, this clears the checkbox and does nothing
+      e.range.setValue(false);
+    }
+  }
+}
+
+//This function creates new events in the Apex Skillshare Calendar based on input from the Interface sheet. The default calendar is the calendar called "Apex Skillshare". This function takes in 'e' which is the onEdit event.
+function newEvent(e){
+  //Saving all the named ranges from the Interface sheet. The named ranges were created manually in the sheet. These named ranges ensure that the data entered is valid. These validation checks were done in the sheet in favor of simplicity. It was quicker & easier to write the validation check as a sheet equation than to code the check.
+  var triggerCalEvent = SpreadsheetApp.getActiveSheet().getRange('triggerCalEvent');
+  var blankVal = SpreadsheetApp.getActiveSheet().getRange('blankVal');
+  var validStart = SpreadsheetApp.getActiveSheet().getRange('validStart').getValue();
+  var validEnd = SpreadsheetApp.getActiveSheet().getRange('validEnd').getValue();
+  var validDate = SpreadsheetApp.getActiveSheet().getRange('validDate').getValue();
+  
+  //Check if we want to add an event and all values in A3:E3 are filled in correctly.
+  if(e.source.getActiveSheet().getName() == 'Interface' && e.range.getA1Notation() == 'F3' && triggerCalEvent.getValue() == true && blankVal.getValue() < 1){
+    //Check if date is valid
+    if(validDate == true){
+      //Check if start time is valid
+      if(validStart == true){
+        //Check if end time is valid
+        if(validEnd == true){
+          //Check if start time < end time
+          if(SpreadsheetApp.getActiveSheet().getRange('F4').getValue() == true){
+            //Convert the start & end dates into date objects to create the event
+            var sheetUI = SpreadsheetApp.getActive().getSheetByName('Interface');
+            var sheetCal = SpreadsheetApp.getActive().getSheetByName('Calendar');
+            var startDate = new Date(sheetUI.getRange('G3').getValue());
+            var endDate = new Date(sheetUI.getRange('H3').getValue())
+            
+            //Create the calendar event
+            var event = CalendarApp.getDefaultCalendar().createEvent('Skillshare General Meeting',
+                                                                     startDate, endDate,
+                                                                     {location: sheetUI.getRange('B3').getValue(),
+                                                                      description: sheetUI.getRange('C3').getValue()
+                                                                     }
+                                                                    )
+            
+            //Delete the calendar event details from the "Interface" sheet
+            sheetUI.getRange('A3:E3').clearContent();
+            sheetUI.getRange('F3').setValue(false);
+            
+            //Update the "Calendar" list with the new event
+            updateEventList();
+          }
+          //If start time is >= end time, notify user and clear "Create" checkbox
+          else{
+            showAlert(5);
+          }
+        }
+        //If end time is invalid, notify user and clear "Create" checkbox
+        else{
+          showAlert(3);
+        }
+      }
+      //If start time is invalid, notify user and clear "Create" checkbox
+      else{
+        showAlert(2);
+      }
+    }
+    //If date is invalid, notify user and clear "Create" checkbox
+    else{
+      showAlert(4);
+    }
+  }
+  //If any calendar info field is empty, notify user and clear "Create" checkbox
+  else if(triggerCalEvent.getValue() == true && blankVal.getValue() > 0){
+    showAlert(1);
+  }
+}
+
+//The function that determines which alert will be shown to the user if data from creating an event is incorrect. 'x' is the number which determines which alert to display.
+function showAlert(x) {
+  var triggerCalEvent = SpreadsheetApp.getActiveSheet().getRange('triggerCalEvent');
+  var ui = SpreadsheetApp.getUi();
+  
+  //This determines wwhich error to show
+  switch(x){
+    case 1:
+      var result = ui.alert('You are missing event information. Please fill in cells A3:E3.');
+      break;
+    case 2:
+      var result = ui.alert('Not a valid start time. Use the format 00:00.');
+      break;
+    case 3:
+      var result = ui.alert('Not a valid end time. Use the format 00:00.');
+      break;
+    case 4:
+      var result = ui.alert('Not a valid date.');
+      break;
+    case 5:
+      var result = ui.alert('Start time must be before the end time.');
+      break;
+  }
+  
+  //This clears the "Create" checkbox
+  triggerCalEvent.setValue(false);
+}
