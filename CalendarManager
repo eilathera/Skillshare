@@ -51,8 +51,11 @@ function updateEventList(){
   var events = cal.getEvents(new Date(), new Date("1/1/2100 12:00 AM"));
   var ss = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Calendar');
   
-  //Clears all the events from the list to ensure there are no duplicate items.
-  ss.getRange('A2:F').clear();
+  //Deletes all the rows to ensure no duplicates, but keeps the header row
+  var values = ss.getRange("A:F").getValues();
+  for (var i = values.length-1; i>1; i--) {
+    ss.deleteRow(i); 
+  }
   
   //For every event in 'events', this loop will populate the approprivate cells with the event information
   for(var i = 0;i<events.length;i++){
