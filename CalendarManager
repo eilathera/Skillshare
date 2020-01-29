@@ -53,7 +53,7 @@ function updateEventList(){
   
   //Deletes all the rows to ensure no duplicates, but keeps the header row
   var values = ss.getRange("A:F").getValues();
-  for (var i = values.length-1; i>1; i--) {
+  for (var i = values.length; i>1; i--) {
     ss.deleteRow(i); 
   }
   
